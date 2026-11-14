@@ -1,6 +1,6 @@
 // The building blocks `job start` and `spawn` share: names, the task
 // file, the repo's config, the work order, places in herdr, starting the
-// agent (Claude Code, or Pi for a worker) and getting it to its input box,
+// agent (Claude Code, agy, or Pi for a worker) and getting it to its input box,
 // the built-in prompts of the lead and the worker, and the machine's
 // resources.
 
@@ -75,17 +75,64 @@ func PiArgs(model, effort *string) []string {
 	return append(args, "--approve")
 }
 
+// AgyArgs are the arguments after `--` in `herdr agent start --kind agy`
+// (Google's Antigravity CLI): tool permission prompts skipped, as Claude
+// Code's are, and --model and --effort when given. Without --model agy
+// uses the model of its own settings.
+func AgyArgs(model, effort *string) []string {
+	args := []string{"--dangerously-skip-permissions"}
+	if model != nil {
+		args = append(args, "--model", *model)
+	}
+	if effort != nil {
+		args = append(args, "--effort", *effort)
+	}
+	return args
+}
+
+// agyCwdArgs trusts `cwd`, the directory fleet chose for the agent, for
+// this run only (`--settings` is never saved), so agy shows no
+// folder-trust dialog and fleet presses no key.
+func agyCwdArgs(cwd string) []string {
+	settings, _ := json.Marshal(map[string][]string{"trustedWorkspaces": {cwd}})
+	return []string{"--settings", string(settings)}
+}
+
 // The agent runtimes fleet starts, by herdr's `--kind`.
 const (
 	KindClaude = "claude"
 	KindPi     = "pi"
+	KindAgy    = "agy"
 )
+
+// Runtime is the kind the scope starts its thread agents, leads and watch
+// workers with, and its workers when `spawn` is given no --agent: the
+// scope config's `runtime`, Claude Code when it is not set.
+func Runtime(sc *config.Scope) string {
+	if sc == nil || sc.Runtime == "" {
+		return KindClaude
+	}
+	return sc.Runtime
+}
+
+// defaultsFor are the scope's default model and effort `m` for a start of
+// `kind`: the scope's `models` name Claude Code's models, so a start of
+// another runtime gets none and the runtime uses its own default.
+func defaultsFor(kind string, m config.Model) (model, effort *string) {
+	if kind != KindClaude {
+		return nil, nil
+	}
+	return orDefault(nil, m.Model), orDefault(nil, m.Effort)
+}
 
 // agentKind is what fleet knows of one agent runtime: how it is started
 // and how its screen reads.
 type agentKind struct {
 	// args are the arguments after `--` in `herdr agent start`.
 	args func(model, effort *string) []string
+	// cwdArgs, when set, are more such arguments for the agent's
+	// directory.
+	cwdArgs func(cwd string) []string
 	// inputBox is whether a screen shows the agent ready for a message.
 	inputBox func(screen string) bool
 	// trustKey is TrustKey for the runtime's folder-trust dialog; nil when
@@ -104,6 +151,8 @@ type agentKind struct {
 var kinds = map[string]agentKind{
 	KindClaude: {args: ClaudeArgs, inputBox: IsInputBox, trustKey: TrustKey, filter: FilterClaudeScreen},
 	KindPi:     {args: PiArgs, inputBox: IsPiInputBox, filter: FilterPiScreen, readFirst: true},
+	KindAgy: {args: AgyArgs, cwdArgs: agyCwdArgs, inputBox: IsAgyInputBox, filter: FilterAgyScreen,
+		readFirst: true},
 }
 
 // kindOf is the entry for herdr's kind `name`: Claude Code's for a kind
@@ -118,7 +167,7 @@ func kindOf(name string) agentKind {
 // CheckKind refuses (exit 1) a kind fleet does not start.
 func CheckKind(name string) error {
 	if _, ok := kinds[name]; !ok {
-		return exit.Refusedf("--agent %s: fleet starts only %s and %s", name, KindClaude, KindPi)
+		return exit.Refusedf("--agent %s: fleet starts only %s, %s and %s", name, KindClaude, KindPi, KindAgy)
 	}
 	return nil
 }
@@ -210,13 +259,14 @@ func StartAgent(h *herdr.Herdr, name, paneID, cwd, kind string, model, effort *s
 	return startAgain(h, name, paneID, start, start)
 }
 
-// ResumeAgent is SettleAgent for an agent an earlier run started in
-// `paneID`, with StartAgent's second start (Claude Code with no model or
-// effort, as a thread agent has) when it exits before its input box.
-func ResumeAgent(h *herdr.Herdr, name, paneID, cwd string) error {
+// ResumeAgent is SettleAgent for an agent of `kind` an earlier run
+// started in `paneID`, with StartAgent's second start (that kind with no
+// model or effort, as a thread agent has) when it exits before its input
+// box.
+func ResumeAgent(h *herdr.Herdr, name, paneID, cwd, kind string) error {
 	return startAgain(h, name, paneID,
-		func() error { return SettleAgent(h, name, paneID, cwd) },
-		func() error { return startOnce(h, name, paneID, cwd, KindClaude, nil, nil) })
+		func() error { return settleKind(h, name, paneID, cwd, kindOf(kind)) },
+		func() error { return startOnce(h, name, paneID, cwd, kind, nil, nil) })
 }
 
 // startAgain is retryStart on herdr, with a note on stderr before the
@@ -275,7 +325,11 @@ func paneHasNoAgent(h *herdr.Herdr, paneID string) (bool, error) {
 func startOnce(h *herdr.Herdr, name, paneID, cwd, kind string, model, effort *string) error {
 	args := []string{"agent", "start", name, "--kind", kind, "--pane", paneID,
 		"--timeout", startTimeoutMS, "--"}
-	args = append(args, kindOf(kind).args(model, effort)...)
+	k := kindOf(kind)
+	args = append(args, k.args(model, effort)...)
+	if k.cwdArgs != nil {
+		args = append(args, k.cwdArgs(cwd)...)
+	}
 	reply, err := h.Call(args...)
 	if err != nil {
 		return err
@@ -544,6 +598,50 @@ func IsInputBox(screen string) bool {
 func IsPiInputBox(screen string) bool {
 	_, ok := piEditorTop(lines(screen))
 	return ok
+}
+
+// IsAgyInputBox is whether `screen` shows agy's prompt box: the last two
+// rules on the screen with a line starting with `>` right below the upper
+// one, and below the lower one only the footer (`? for shortcuts` when
+// idle, `esc to cancel` while it works), at most two lines. agy's dialogs
+// (a tool approval, the folder-trust question) draw one rule or none, and
+// what follows it is longer than a footer.
+func IsAgyInputBox(screen string) bool {
+	_, ok := agyBoxTop(lines(screen))
+	return ok
+}
+
+// agyBoxTop is the index of the upper rule of agy's prompt box in `all`,
+// the screen's lines; ok is false when the screen does not end in the box.
+func agyBoxTop(all []string) (top int, ok bool) {
+	end := len(all)
+	for end > 0 && strings.TrimSpace(all[end-1]) == "" {
+		end--
+	}
+	bottom := -1
+	for i := end - 1; i >= 0 && i >= end-3; i-- {
+		if agyRule(all[i]) {
+			bottom = i
+			break
+		}
+	}
+	if bottom < 0 {
+		return 0, false
+	}
+	for i := bottom - 1; i >= 0; i-- {
+		if agyRule(all[i]) {
+			first := strings.TrimLeftFunc(all[i+1], unicode.IsSpace)
+			return i, i+1 < bottom && (first == ">" || strings.HasPrefix(first, "> "))
+		}
+	}
+	return 0, false
+}
+
+// agyRule is a line of ─ across most of the screen, as agy draws above
+// and below its prompt box.
+func agyRule(line string) bool {
+	line = strings.TrimSpace(line)
+	return utf8.RuneCountInString(line) >= 10 && strings.Trim(line, "─") == ""
 }
 
 // piEditorTop is the index of the top border of Pi's editor in `all`, the

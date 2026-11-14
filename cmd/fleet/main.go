@@ -21,7 +21,7 @@ import (
 )
 
 // version is the fleet release version.
-const version = "0.2.28"
+const version = "0.2.28-agy1"
 
 const longAbout = "Runs and coordinates coding agents through herdr.\n\n" +
 	"A thread agent starts a job (`fleet job start`): its lead, which starts workers " +
@@ -336,9 +336,9 @@ Arguments:
 Options:
       --task-file <PATH>  File with the task, delivered as the worker's first message (with the header)
       --cwd <DIR>         Directory the worker runs in; must exist (typically a path from ` + "`fleet worktree`" + `)
-      --agent <AGENT>     The agent started: claude (default) or pi
+      --agent <AGENT>     The agent started: claude, pi or agy. Default: the scope's runtime, else claude
       --model <MODEL>     Model passed to the agent as --model. Default for claude: the scope's
-                          models.worker, else the agent's own. Required for pi
+                          models.worker, else the agent's own; for agy, agy's own. Required for pi
       --effort <EFFORT>   Effort passed to the agent as --effort (pi: --thinking). Default for
                           claude: the scope's models.worker, else the agent's own; for pi, Pi's own
       --light             Skip the load check (memory is still checked) for a worker that only reads;
@@ -998,7 +998,7 @@ func runSpawn(args []string, scope *cliargs.OptString) (exit.Code, error) {
 	effort := cliargs.OptString{Name: "effort", Placeholder: "EFFORT"}
 	fs.Var(&taskFile, "task-file", "File with the task")
 	fs.Var(&cwd, "cwd", "Directory the worker runs in")
-	fs.Var(&agent, "agent", "The agent started: claude or pi")
+	fs.Var(&agent, "agent", "The agent started: claude, pi or agy")
 	fs.Var(&model, "model", "Model passed to the agent as --model")
 	fs.Var(&effort, "effort", "Effort passed to the agent as --effort")
 	light := cliargs.Bool{Name: "light"}

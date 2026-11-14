@@ -905,7 +905,7 @@ func (s *threadStart) start() (exit.Code, error) {
 	if err != nil {
 		return startFailed(s.id.Agent, err, 0, s.created, "")
 	}
-	code, err := startAndDeliver(s.h, s.conn, s.id, place, s.cwd, KindClaude, nil, nil, s.msg.sender(), s.firstMessage(), &s.created)
+	code, err := startAndDeliver(s.h, s.conn, s.id, place, s.cwd, Runtime(s.cfg), nil, nil, s.msg.sender(), s.firstMessage(), &s.created)
 	if err == nil && code == exit.Unknown {
 		return typedFirst(s.conn, s.id.Agent)
 	}
@@ -1063,8 +1063,8 @@ func resumeThreadStart(h *herdr.Herdr, conn *sql.DB, scope string, cfg *config.S
 	}
 	// The row's issue, not the thread's ticket: a session that started
 	// without its ticket has none.
-	var pane, issue string
-	if err := conn.QueryRow("SELECT pane_id, issue FROM agents WHERE name = ?1 AND state != 'ended'", name).Scan(&pane, &issue); err != nil {
+	var pane, issue, kind string
+	if err := conn.QueryRow("SELECT pane_id, issue, kind FROM agents WHERE name = ?1 AND state != 'ended'", name).Scan(&pane, &issue, &kind); err != nil {
 		return 0, false, exit.Database(err)
 	}
 	s := &threadStart{h: h, conn: conn, cfg: cfg, msg: msg, known: known, session: known.Sessions, home: home,
@@ -1087,7 +1087,10 @@ func resumeThreadStart(h *herdr.Herdr, conn *sql.DB, scope string, cfg *config.S
 	// its queue.
 	status, _ := herdrAgent(h, name)["agent_status"].(string)
 	if status != "working" {
-		if err := ResumeAgent(h, name, pane, s.cwd); err != nil {
+		if kind == "" {
+			kind = Runtime(cfg)
+		}
+		if err := ResumeAgent(h, name, pane, s.cwd, kind); err != nil {
 			return 0, false, err
 		}
 	}

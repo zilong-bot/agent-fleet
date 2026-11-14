@@ -68,7 +68,12 @@ const (
 		"started with `herdr agent start --kind pi` and `--model <MODEL>`, `--thinking <EFFORT>` " +
 		"when --effort is given, and `--approve`, which trusts --cwd for this run, so no key is " +
 		"pressed; the scope's `models.worker` is not used, and --model is required (without it " +
-		"Pi would fall back to its own default model). Any screen that is not the input box stops " +
+		"Pi would fall back to its own default model). agy, Google's Antigravity CLI (`--agent agy`), " +
+		"is started with `herdr agent start --kind agy`, tool permission prompts skipped, --model and " +
+		"--effort when given, and --cwd trusted for this run (`--settings`, never saved), so no key " +
+		"is pressed; the scope's `models.worker` is not used. Without --agent, the scope config's " +
+		"`runtime` (`claude` or `agy`, default `claude`) names the agent; the same setting picks the " +
+		"runtime of the scope's thread agents, leads and watch workers. Any screen that is not the input box stops " +
 		"the spawn. Finally the task is delivered as `fleet send` would, and the row becomes " +
 		"active.\n\n" +
 		"--light is for a worker that only reads and does I/O (research, a review that runs no " +
@@ -151,7 +156,11 @@ func spawnChecks(h *herdr.Herdr, args SpawnArgs) (*spawnChecked, *sql.DB, error)
 	}
 	kind := args.Agent
 	if kind == "" {
-		kind = KindClaude
+		sc, err := config.LoadScope(me.Scope)
+		if err != nil {
+			return nil, nil, err
+		}
+		kind = Runtime(sc)
 	}
 	if err := CheckKind(kind); err != nil {
 		return nil, nil, err

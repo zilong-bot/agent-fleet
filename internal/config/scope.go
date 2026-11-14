@@ -43,6 +43,10 @@ type Scope struct {
 	// Models are the --model and --effort `job start` and `spawn` pass
 	// when the command gives none.
 	Models Models
+	// Runtime is the agent runtime (herdr's kind) the scope starts its
+	// thread agents, leads and watch workers with, and its workers when
+	// `spawn` names none: "claude" or "agy"; empty is "claude".
+	Runtime string
 	// LoadMultiplier scales the CPU count that `job start` and `spawn`
 	// keep the 1-minute load average below; above 0, default 1.
 	LoadMultiplier float64
@@ -127,6 +131,7 @@ type scopeFile struct {
 	Watch   *scopeWatchFile        `json:"watch"`
 	Prompts map[string]*promptFile `json:"prompts"`
 	Models  *modelsFile            `json:"models"`
+	Runtime *string                `json:"runtime"`
 	Watches map[string]*watchFile  `json:"watches"`
 }
 
@@ -243,6 +248,12 @@ func ParseScope(data []byte, home string) (*Scope, error) {
 	}
 	if err := errors.Join(t.Channels.check(), f.Watch.apply(&t.Watch), f.Models.apply(&t.Models)); err != nil {
 		return nil, err
+	}
+	if f.Runtime != nil {
+		if *f.Runtime != "claude" && *f.Runtime != "agy" {
+			return nil, errors.New(`runtime: must be "claude" or "agy"`)
+		}
+		t.Runtime = *f.Runtime
 	}
 	var err error
 	t.Ignored = f.Watch.ignored()

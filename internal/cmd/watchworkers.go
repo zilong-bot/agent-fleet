@@ -398,7 +398,9 @@ func (w *workers) startWorker(e config.Entry, id *identity.Identity, s workerSub
 		return failed(err, 0)
 	}
 	created = append(created, fmt.Sprintf("tab %s (%s)", name, place.TabID))
-	code, err := startAndDeliver(w.h, w.conn, id, place, w.dir, KindClaude, orDefault(nil, e.Model), orDefault(nil, e.Effort),
+	kind := Runtime(w.cfg)
+	model, effort := defaultsFor(kind, config.Model{Model: e.Model, Effort: e.Effort})
+	code, err := startAndDeliver(w.h, w.conn, id, place, w.dir, kind, model, effort,
 		watchSender, body, &created)
 	if err != nil || code != exit.Ok {
 		return failed(err, code)

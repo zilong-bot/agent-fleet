@@ -766,6 +766,32 @@ func FilterPiScreen(screen string) string {
 	return strings.Join(kept, "\n")
 }
 
+// FilterAgyScreen is agy's visible screen without what moves while the
+// agent is stuck: the prompt box with its footer (the mode and model, the
+// quota), and the status lines just above it (a braille spinner with
+// `Running command...`, blank lines). A screen that does not end in the
+// box (a dialog) stays whole.
+func FilterAgyScreen(screen string) string {
+	all := lines(screen)
+	top, ok := agyBoxTop(all)
+	if !ok {
+		return screen
+	}
+	kept := all[:top]
+	for len(kept) > 0 && isAgyStatusLine(kept[len(kept)-1]) {
+		kept = kept[:len(kept)-1]
+	}
+	return strings.Join(kept, "\n")
+}
+
+// isAgyStatusLine is a line of the status area above agy's prompt box:
+// blank, or one that starts with a braille spinner frame.
+func isAgyStatusLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	first, _ := utf8.DecodeRuneInString(trimmed)
+	return trimmed == "" || first >= 0x2800 && first <= 0x28FF
+}
+
 // isPiStatusLine is a line of the status area above Pi's editor: blank, or
 // a status that starts with one of Pi's braille spinner frames.
 func isPiStatusLine(line string) bool {
