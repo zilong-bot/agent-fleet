@@ -1087,10 +1087,7 @@ func resumeThreadStart(h *herdr.Herdr, conn *sql.DB, scope string, cfg *config.S
 	// its queue.
 	status, _ := herdrAgent(h, name)["agent_status"].(string)
 	if status != "working" {
-		if kind == "" {
-			kind = Runtime(cfg)
-		}
-		if err := ResumeAgent(h, name, pane, s.cwd, kind); err != nil {
+		if err := ResumeAgent(h, name, pane, s.cwd, recordedKind(kind, cfg)); err != nil {
 			return 0, false, err
 		}
 	}

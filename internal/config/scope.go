@@ -135,6 +135,17 @@ type scopeFile struct {
 	Watches map[string]*watchFile  `json:"watches"`
 }
 
+// runtime reads `runtime`: "claude" or "agy"; absent is "".
+func runtime(value *string) (string, error) {
+	if value == nil {
+		return "", nil
+	}
+	if *value != "claude" && *value != "agy" {
+		return "", errors.New(`runtime: must be "claude" or "agy"`)
+	}
+	return *value, nil
+}
+
 // setting is one key of the `paths` or `channels` section: nil when the
 // key is absent.
 type setting struct {
@@ -249,13 +260,10 @@ func ParseScope(data []byte, home string) (*Scope, error) {
 	if err := errors.Join(t.Channels.check(), f.Watch.apply(&t.Watch), f.Models.apply(&t.Models)); err != nil {
 		return nil, err
 	}
-	if f.Runtime != nil {
-		if *f.Runtime != "claude" && *f.Runtime != "agy" {
-			return nil, errors.New(`runtime: must be "claude" or "agy"`)
-		}
-		t.Runtime = *f.Runtime
-	}
 	var err error
+	if t.Runtime, err = runtime(f.Runtime); err != nil {
+		return nil, err
+	}
 	t.Ignored = f.Watch.ignored()
 	var retired []string
 	if t.Prompts, retired, err = prompts(f.Prompts, home); err != nil {

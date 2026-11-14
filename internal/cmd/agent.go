@@ -115,6 +115,15 @@ func Runtime(sc *config.Scope) string {
 	return sc.Runtime
 }
 
+// recordedKind is the kind a row recorded, or the scope's runtime for a
+// row that recorded none.
+func recordedKind(kind string, sc *config.Scope) string {
+	if kind == "" {
+		return Runtime(sc)
+	}
+	return kind
+}
+
 // defaultsFor are the scope's default model and effort `m` for a start of
 // `kind`: the scope's `models` name Claude Code's models, so a start of
 // another runtime gets none and the runtime uses its own default.
